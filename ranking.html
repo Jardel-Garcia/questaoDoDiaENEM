@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Ranking — Questão do Dia ENEM</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <header class="board">
+    <p class="board__eyebrow">RANKING GERAL</p>
+    <h1 class="board__title">Quem mais acerta a Questão do Dia</h1>
+    <p class="board__meta">Todas as turmas do 3º ano · acumulado desde o início</p>
+  </header>
+
+  <main class="page">
+    <div class="wrap" id="app">
+      <div class="loading">Carregando ranking…</div>
+    </div>
+  </main>
+
+<script src="js/config.js"></script>
+<script>
+const app = document.getElementById("app");
+const INTERVALO_ATUALIZACAO = 45000; // 45s — bom para telão/mural
+
+carregar();
+setInterval(carregar, INTERVALO_ATUALIZACAO);
+
+async function carregar() {
+  try {
+    const ranking = await apiGet("ranking");
+    render(ranking);
+  } catch (e) {
+    // Em modo telão, evitamos substituir a tela por um erro feio a cada 45s.
+    // Só mostramos erro se ainda não há nada na tela.
+    if (!app.querySelector(".ranking-list")) {
+      app.innerHTML = `<div class="center-note">Não foi possível carregar o ranking agora. Atualizando automaticamente…</div>`;
+    }
+  }
+}
+
+function render(lista) {
+  if (!lista.length) {
+    app.innerHTML = `<div class="center-note">Ainda não há acertos registrados hoje. Seja o primeiro! 🚀</div>`;
+    return;
+  }
+
+  app.innerHTML = `
+    <div class="ranking-list">
+      ${lista.map(item => `
+        <div class="ranking-row ${item.posicao <= 3 ? `ranking-row--top${item.posicao}` : ""}">
+          <span class="ranking-row__pos">${item.posicao}º</span>
+          <span class="ranking-row__nome">${escapeHtml(item.nome)}</span>
+          <span class="ranking-row__pontos">${item.acertos} ${item.acertos === 1 ? "acerto" : "acertos"}</span>
+        </div>
+      `).join("")}
+    </div>
+    <p class="ranking-updated">Atualizado às ${new Date().toLocaleTimeString("pt-BR")}</p>
+  `;
+}
+
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+</script>
+</body>
+</html>

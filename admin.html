@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Admin — Questão do Dia ENEM</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <header class="board">
+    <p class="board__eyebrow">ÁREA RESTRITA</p>
+    <h1 class="board__title">Painel administrativo</h1>
+  </header>
+
+  <main class="page">
+    <div class="wrap" id="app"></div>
+  </main>
+
+<script src="js/config.js"></script>
+<script>
+const app = document.getElementById("app");
+let senha = sessionStorage.getItem("qde_admin_senha") || "";
+// sessionStorage aqui só guarda a senha durante a aba aberta (nunca em localStorage
+// nem em cookie persistente) — some ao fechar o navegador.
+
+if (senha) {
+  renderPainel();
+} else {
+  renderLogin();
+}
+
+function renderLogin(erro) {
+  app.innerHTML = `
+    <div class="card">
+      <h2 style="font-family:var(--font-display); margin-top:0;">Entrar</h2>
+      ${erro ? `<p class="msg msg--erro">${erro}</p>` : ""}
+      <label class="field-label" for="campoSenha">Senha do painel</label>
+      <input type="password" id="campoSenha" placeholder="Senha do administrador">
+      <button class="btn btn-primary" id="btnEntrar">Entrar</button>
+    </div>
+  `;
+  document.getElementById("btnEntrar").addEventListener("click", async () => {
+    const val = document.getElementById("campoSenha").value;
+    const btn = document.getElementById("btnEntrar");
+    btn.disabled = true; btn.textContent = "Verificando…";
+    try {
+      await apiGet("adminVerificar", { senha: val });
+      senha = val;
+      sessionStorage.setItem("qde_admin_senha", senha);
+      renderPainel();
+    } catch (e) {
+      renderLogin("Senha incorreta.");
+    }
+  });
+  document.getElementById("campoSenha").addEventListener("keydown", e => {
+    if (e.key === "Enter") document.getElementById("btnEntrar").click();
+  });
+}
+
+function renderPainel() {
+  app.innerHTML = `
+    <div class="tabs">
+      <button class="tab is-active" data-tab="metricas">Métricas</button>
+      <button class="tab" data-tab="alunos">Alunos/Turmas</button>
+      <button class="tab" data-tab="questoes">Questões</button>
+      <button class="tab" data-tab="qrcodes">QR Codes</button>
+    </div>
+
+    <div class="tab-panel is-active" id="tab-metricas"><div class="loading">Carregando…</div></div>
+    <div class="tab-panel" id="tab-alunos"></div>
+    <div class="tab-panel" id="tab-questoes"><div class="loading">Carregando…</div></div>
+    <div class="tab-panel" id="tab-qrcodes"></div>
+
+    <button class="btn btn-secondary" id="btnSair" style="margin-top:20px;">Sair</button>
+  `;
+
+  document.querySelectorAll(".tab").forEach(t => {
+    t.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach(x => x.classList.remove("is-active"));
+      document.querySelectorAll(".tab-panel").forEach(x => x.classList.remove("is-active"));
+      t.classList.add("is-active");
+      document.getElementById("tab-" + t.dataset.tab).classList.add("is-active");
+    });
+  });
+
+  document.getElementById("btnSair").addEventListener("click", () => {
+    sessionStorage.removeItem("qde_admin_senha");
+    senha = "";
+    renderLogin();
+  });
+
+  carregarMetricas();
+  renderAlunosTab();
+  carregarQuestoes();
+  renderQrCodesTab();
+}
+
+// ---------- Métricas ----------
+async function carregarMetricas() {
+  const el = document.getElementById("tab-metricas");
+  try {
+    const m = await apiGet("adminMetricas", { senha });
+    el.innerHTML = `
+      <div class="stat-grid">
+        <div class="stat"><span class="stat__valor">${m.totalAlunos}</span><span class="stat__label">alunos cadastrados</span></div>
+        <div class="stat"><span class="stat__valor">${m.respostasHoje}</span><span class="stat__label">responderam hoje</span></div>
+        <div class="stat"><span class="stat__valor">${m.percParticipacaoHoje}%</span><span class="stat__label">participação hoje</span></div>
+        <div class="stat"><span class="stat__valor">${m.percAcertoGeral}%</span><span class="stat__label">acerto geral acumulado</span></div>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0; font-size:15px;">Últimas questões publicadas</h3>
+        <div class="table-scroll">
+          <table class="simple-table">
+            <thead><tr><th>Data</th><th>Disciplina</th><th>Ano</th><th>% acerto</th></tr></thead>
+            <tbody>
+              ${m.historicoQuestoes.map(q => `<tr><td>${q.data}</td><td>${escapeHtml(q.disciplina)}</td><td>${q.ano}</td><td>${q.percAcerto}%</td></tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = `<p class="msg msg--erro">Erro ao carregar métricas: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+// ---------- Alunos/Turmas ----------
+function renderAlunosTab() {
+  const el = document.getElementById("tab-alunos");
+  el.innerHTML = `
+    <div class="card">
+      <h3 style="margin-top:0; font-size:15px;">Importar lista de alunos</h3>
+      <p style="color:var(--ink-soft); font-size:13.5px;">
+        Cole uma linha por aluno, no formato <code>Nome completo, Turma</code>.
+        Alunos com o mesmo nome exato já cadastrado são ignorados (evita duplicar).
+      </p>
+      <label class="field-label" for="csvAlunos">Lista (uma linha por aluno)</label>
+      <textarea id="csvAlunos" placeholder="Maria da Silva, 3ºA&#10;João Pereira, 3ºB"></textarea>
+      <button class="btn btn-primary" id="btnImportar">Importar lista</button>
+      <div id="msgImportar"></div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0; font-size:15px;">Alunos cadastrados</h3>
+      <div class="table-scroll" id="listaAlunos"><div class="loading">Carregando…</div></div>
+    </div>
+  `;
+
+  document.getElementById("btnImportar").addEventListener("click", async () => {
+    const csv = document.getElementById("csvAlunos").value.trim();
+    const msg = document.getElementById("msgImportar");
+    if (!csv) return;
+    const btn = document.getElementById("btnImportar");
+    btn.disabled = true; btn.textContent = "Importando…";
+    try {
+      const r = await apiPost("importarAlunos", { senha, csv });
+      msg.innerHTML = `<p class="msg msg--ok">${r.adicionados} aluno(s) adicionado(s), ${r.ignorados} ignorado(s) (já existiam).</p>`;
+      document.getElementById("csvAlunos").value = "";
+      carregarListaAlunos();
+    } catch (e) {
+      msg.innerHTML = `<p class="msg msg--erro">Erro: ${escapeHtml(e.message)}</p>`;
+    } finally {
+      btn.disabled = false; btn.textContent = "Importar lista";
+    }
+  });
+
+  carregarListaAlunos();
+}
+
+async function carregarListaAlunos() {
+  const el = document.getElementById("listaAlunos");
+  try {
+    const alunos = await apiGet("adminAlunos", { senha });
+    el.innerHTML = `
+      <table class="simple-table">
+        <thead><tr><th>Nome</th><th>Turma</th><th>Ativo</th><th>Acertos</th></tr></thead>
+        <tbody>
+          ${alunos.map(a => `<tr><td>${escapeHtml(a.nome)}</td><td>${escapeHtml(a.turma || "—")}</td><td>${a.ativo ? "Sim" : "Não"}</td><td>${a.acertos}</td></tr>`).join("")}
+        </tbody>
+      </table>
+    `;
+  } catch (e) {
+    el.innerHTML = `<p class="msg msg--erro">Erro ao carregar alunos.</p>`;
+  }
+}
+
+// ---------- Questões ----------
+async function carregarQuestoes() {
+  const el = document.getElementById("tab-questoes");
+  try {
+    const q = await apiGet("adminQuestoes", { senha });
+    el.innerHTML = `
+      <div class="card">
+        <h3 style="margin-top:0; font-size:15px;">Banco de questões</h3>
+        <div class="stat-grid">
+          <div class="stat"><span class="stat__valor">${q.disponiveis}</span><span class="stat__label">disponíveis (não usadas)</span></div>
+          <div class="stat"><span class="stat__valor">${q.usadas}</span><span class="stat__label">já usadas</span></div>
+        </div>
+        <label class="field-label" for="qtdImportar">Importar novas questões da API enem.dev</label>
+        <input type="number" id="qtdImportar" value="50" min="1" max="300">
+        <button class="btn btn-secondary" id="btnImportarQuestoes">Importar lote da API</button>
+        <div id="msgQuestoes"></div>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0; font-size:15px;">Questão de hoje</h3>
+        <p style="font-size:14px;">${q.questaoHoje ? escapeHtml(q.questaoHoje.enunciado.slice(0, 160)) + "…" : "Ainda não publicada hoje."}</p>
+        <button class="btn btn-secondary" id="btnTrocarHoje">Trocar questão de hoje (sorteia outra)</button>
+        <div id="msgTrocar"></div>
+      </div>
+    `;
+
+    document.getElementById("btnImportarQuestoes").addEventListener("click", async () => {
+      const qtd = document.getElementById("qtdImportar").value;
+      const msg = document.getElementById("msgQuestoes");
+      const btn = document.getElementById("btnImportarQuestoes");
+      btn.disabled = true; btn.textContent = "Importando… (pode levar 1-2 min)";
+      msg.innerHTML = "";
+      try {
+        const r = await apiPost("importarQuestoes", { senha, quantidade: qtd });
+        msg.innerHTML = `<p class="msg msg--ok">${r.adicionadas} questão(ões) nova(s) adicionada(s) ao banco.</p>`;
+        carregarQuestoes();
+      } catch (e) {
+        msg.innerHTML = `<p class="msg msg--erro">Erro: ${escapeHtml(e.message)}</p>`;
+      } finally {
+        btn.disabled = false; btn.textContent = "Importar lote da API";
+      }
+    });
+
+    document.getElementById("btnTrocarHoje").addEventListener("click", async () => {
+      if (!confirm("Isso vai sortear uma nova questão para hoje, substituindo a atual. Confirmar?")) return;
+      const msg = document.getElementById("msgTrocar");
+      try {
+        await apiPost("trocarQuestaoDoDia", { senha });
+        msg.innerHTML = `<p class="msg msg--ok">Nova questão publicada para hoje.</p>`;
+        carregarQuestoes();
+      } catch (e) {
+        msg.innerHTML = `<p class="msg msg--erro">Erro: ${escapeHtml(e.message)}</p>`;
+      }
+    });
+  } catch (e) {
+    el.innerHTML = `<p class="msg msg--erro">Erro ao carregar questões: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+// ---------- QR Codes ----------
+function renderQrCodesTab() {
+  const el = document.getElementById("tab-qrcodes");
+  const urlAluno = location.href.replace(/admin\.html.*$/, "aluno.html");
+  const urlRanking = location.href.replace(/admin\.html.*$/, "ranking.html");
+  el.innerHTML = `
+    <div class="card">
+      <h3 style="margin-top:0; font-size:15px;">QR Code — Aluno</h3>
+      <p style="font-size:13px; word-break:break-all; color:var(--ink-soft);">${urlAluno}</p>
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(urlAluno)}" alt="QR Code do aluno" style="margin:0 auto;">
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0; font-size:15px;">QR Code — Ranking (telão/mural)</h3>
+      <p style="font-size:13px; word-break:break-all; color:var(--ink-soft);">${urlRanking}</p>
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(urlRanking)}" alt="QR Code do ranking" style="margin:0 auto;">
+    </div>
+    <p style="font-size:12.5px; color:var(--ink-soft);">
+      Os QR Codes são gerados por um serviço público (api.qrserver.com) a partir da URL — não guarda nenhum dado seu.
+    </p>
+  `;
+}
+
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Questão do Dia — ENEM</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <header class="board">
+    <p class="board__eyebrow">QUESTÃO DO DIA</p>
+    <h1 class="board__title">Uma questão do ENEM, todo dia.</h1>
+    <p class="board__meta" id="dataHoje"></p>
+  </header>
+
+  <main class="page">
+    <div class="wrap" id="app">
+      <div class="loading">Carregando a questão de hoje…</div>
+    </div>
+  </main>
+
+  <footer class="privacidade">
+    Guardamos apenas seu nome e sua resposta, para montar o ranking. Sem CPF, e‑mail ou telefone.
+  </footer>
+
+<script src="js/config.js"></script>
+<script>
+const app = document.getElementById("app");
+document.getElementById("dataHoje").textContent =
+  new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
+
+// Estado da tela: guardamos a questão e o aluno escolhido em memória (sem localStorage,
+// já que qualquer pessoa pode estar usando o celular/tablet compartilhado da escola).
+let estado = {
+  questao: null,       // dados da questão do dia (sem gabarito, a menos que já respondida)
+  alunoId: null,
+  alunoNome: null,
+  alternativaEscolhida: null,
+};
+
+iniciar();
+
+async function iniciar() {
+  try {
+    const data = await apiGet("questaoDoDia");
+    estado.questao = data;
+    if (data.jaRespondida) {
+      renderJaRespondeu(data);
+    } else {
+      renderQuestao(data);
+    }
+  } catch (e) {
+    renderErro("Não foi possível carregar a questão de hoje. Puxe a tela para atualizar, ou tente novamente em alguns minutos.");
+  }
+}
+
+function renderQuestao(q) {
+  app.innerHTML = `
+    <div class="card">
+      <span class="question__disciplina">${escapeHtml(q.disciplina || "ENEM")} · ${escapeHtml(String(q.ano || ""))}</span>
+      <div class="question__enunciado">${escapeHtml(q.enunciado)}</div>
+      ${q.imagemUrl ? `<img class="question__imagem" src="${q.imagemUrl}" alt="Imagem da questão">` : ""}
+      <div class="alternativas" id="alternativas">
+        ${q.alternativas.map(a => `
+          <button class="alt" data-letra="${a.letra}">
+            <span class="alt__letra">${a.letra}</span>
+            <span>${escapeHtml(a.texto)}</span>
+          </button>
+        `).join("")}
+      </div>
+      <button class="btn btn-primary" id="btnIr" disabled>Escolha uma alternativa</button>
+    </div>
+  `;
+
+  document.querySelectorAll(".alt").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".alt").forEach(b => b.classList.remove("is-selected"));
+      btn.classList.add("is-selected");
+      estado.alternativaEscolhida = btn.dataset.letra;
+      const ir = document.getElementById("btnIr");
+      ir.disabled = false;
+      ir.textContent = `Responder com a letra ${estado.alternativaEscolhida}`;
+    });
+  });
+
+  document.getElementById("btnIr").addEventListener("click", renderIdentificacao);
+}
+
+function renderIdentificacao() {
+  app.innerHTML = `
+    <div class="card">
+      <h2 style="font-family:var(--font-display); font-size:19px; margin-top:0;">Quem está respondendo?</h2>
+      <p style="color:var(--ink-soft); font-size:14px; margin-top:-8px;">Digite seu nome para encontrá-lo na lista da escola.</p>
+      <div class="search-box">
+        <input type="text" class="search-input" id="buscaNome" placeholder="Comece a digitar seu nome…" autocomplete="off">
+        <div class="search-results" id="resultados"></div>
+      </div>
+      <div id="selecaoWrap"></div>
+      <button class="btn btn-secondary" id="btnVoltar" style="margin-top:10px;">Voltar para a questão</button>
+    </div>
+  `;
+
+  document.getElementById("btnVoltar").addEventListener("click", () => renderQuestao(estado.questao));
+
+  const input = document.getElementById("buscaNome");
+  const resultados = document.getElementById("resultados");
+  let alunos = [];
+  let timer = null;
+
+  input.addEventListener("input", () => {
+    estado.alunoId = null;
+    document.getElementById("selecaoWrap").innerHTML = "";
+    const termo = input.value.trim();
+    clearTimeout(timer);
+    if (termo.length < 2) { resultados.innerHTML = ""; return; }
+    timer = setTimeout(async () => {
+      try {
+        alunos = await apiGet("alunos", { busca: termo });
+        resultados.innerHTML = alunos.slice(0, 8).map(a =>
+          `<button type="button" class="search-result" data-id="${a.id}" data-nome="${escapeHtml(a.nome)}">${escapeHtml(a.nome)}${a.turma ? ` <span style="color:var(--ink-soft)">· ${escapeHtml(a.turma)}</span>` : ""}</button>`
+        ).join("") || `<div style="padding:12px 14px; color:var(--ink-soft); font-size:14px;">Nenhum nome encontrado. Confira a grafia ou fale com o professor.</div>`;
+        resultados.querySelectorAll(".search-result").forEach(btn => {
+          btn.addEventListener("click", () => selecionarAluno(btn.dataset.id, btn.dataset.nome));
+        });
+      } catch (e) {
+        resultados.innerHTML = `<div style="padding:12px 14px; color:var(--wrong); font-size:14px;">Erro ao buscar. Tente de novo.</div>`;
+      }
+    }, 250);
+  });
+
+  function selecionarAluno(id, nome) {
+    estado.alunoId = id;
+    estado.alunoNome = nome;
+    resultados.innerHTML = "";
+    input.value = "";
+    document.getElementById("selecaoWrap").innerHTML = `
+      <div class="aluno-selecionado">
+        <span>Confirma que você é <strong>${escapeHtml(nome)}</strong>?</span>
+        <button type="button" id="btnTrocar">trocar</button>
+      </div>
+      <button class="btn btn-primary" id="btnConfirmar">Confirmar e enviar resposta</button>
+    `;
+    document.getElementById("btnTrocar").addEventListener("click", () => {
+      estado.alunoId = null;
+      document.getElementById("selecaoWrap").innerHTML = "";
+    });
+    document.getElementById("btnConfirmar").addEventListener("click", enviarResposta);
+  }
+}
+
+async function enviarResposta() {
+  const btn = document.getElementById("btnConfirmar");
+  btn.disabled = true;
+  btn.textContent = "Enviando…";
+  try {
+    const resultado = await apiPost("responder", {
+      alunoId: estado.alunoId,
+      alternativa: estado.alternativaEscolhida,
+    });
+    renderResultado(resultado);
+  } catch (e) {
+    if (String(e.message).includes("JA_RESPONDEU")) {
+      iniciar(); // recarrega e mostra a tela de "já respondeu hoje"
+    } else {
+      app.innerHTML = `<div class="card"><p class="msg msg--erro">Não foi possível enviar sua resposta (${escapeHtml(e.message)}). Tente novamente.</p>
+      <button class="btn btn-primary" onclick="location.reload()">Tentar de novo</button></div>`;
+    }
+  }
+}
+
+function renderResultado(r) {
+  renderResultadoComum(r, false);
+}
+
+function renderJaRespondeu(q) {
+  renderResultadoComum(q, true);
+}
+
+function renderResultadoComum(r, jaEraDeHoje) {
+  const acertou = r.correta;
+  app.innerHTML = `
+    <div class="card resultado ${acertou ? "resultado--acerto" : "resultado--erro"}">
+      <div class="resultado__icone">${acertou ? "🎉" : "📘"}</div>
+      <p class="resultado__titulo">${acertou ? "Você acertou!" : "Não foi dessa vez"}</p>
+      <p style="color:var(--ink-soft); font-size:14px;">
+        ${jaEraDeHoje ? "Você já respondeu a questão de hoje." : ""}
+        ${!acertou ? `A resposta certa era a letra <strong>${r.alternativaCorreta}</strong>.` : ""}
+      </p>
+    </div>
+    <div class="card">
+      <span class="question__disciplina">${escapeHtml(r.disciplina || "ENEM")} · ${escapeHtml(String(r.ano || ""))}</span>
+      <div class="question__enunciado">${escapeHtml(r.enunciado)}</div>
+      ${r.imagemUrl ? `<img class="question__imagem" src="${r.imagemUrl}" alt="Imagem da questão">` : ""}
+      <div class="alternativas">
+        ${r.alternativas.map(a => {
+          let cls = "alt";
+          if (a.letra === r.alternativaCorreta) cls += " is-correct";
+          else if (a.letra === r.alternativaMarcada) cls += " is-wrong";
+          return `<button class="${cls}" disabled>
+            <span class="alt__letra">${a.letra}</span>
+            <span>${escapeHtml(a.texto)}</span>
+          </button>`;
+        }).join("")}
+      </div>
+      ${r.explicacao ? `<div class="explicacao"><strong>Explicação:</strong> ${escapeHtml(r.explicacao)}</div>` : ""}
+    </div>
+    <p style="text-align:center; color:var(--ink-soft); font-size:14px;">Volte amanhã para a próxima questão. 👋</p>
+  `;
+}
+
+function renderErro(msg) {
+  app.innerHTML = `<div class="center-note">${escapeHtml(msg)}</div>`;
+}
+
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+</script>
+</body>
+</html>
