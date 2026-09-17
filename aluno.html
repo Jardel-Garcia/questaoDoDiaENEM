@@ -59,13 +59,13 @@ function renderQuestao(q) {
   app.innerHTML = `
     <div class="card">
       <span class="question__disciplina">${escapeHtml(q.disciplina || "ENEM")} · ${escapeHtml(String(q.ano || ""))}</span>
-      <div class="question__enunciado">${escapeHtml(q.enunciado)}</div>
+      <div class="question__enunciado">${formatarTexto(q.enunciado)}</div>
       ${q.imagemUrl ? `<img class="question__imagem" src="${q.imagemUrl}" alt="Imagem da questão">` : ""}
       <div class="alternativas" id="alternativas">
         ${q.alternativas.map(a => `
           <button class="alt" data-letra="${a.letra}">
             <span class="alt__letra">${a.letra}</span>
-            <span>${escapeHtml(a.texto)}</span>
+            <span>${formatarTexto(a.texto)}</span>
           </button>
         `).join("")}
       </div>
@@ -190,7 +190,7 @@ function renderResultadoComum(r, jaEraDeHoje) {
     </div>
     <div class="card">
       <span class="question__disciplina">${escapeHtml(r.disciplina || "ENEM")} · ${escapeHtml(String(r.ano || ""))}</span>
-      <div class="question__enunciado">${escapeHtml(r.enunciado)}</div>
+      <div class="question__enunciado">${formatarTexto(r.enunciado)}</div>
       ${r.imagemUrl ? `<img class="question__imagem" src="${r.imagemUrl}" alt="Imagem da questão">` : ""}
       <div class="alternativas">
         ${r.alternativas.map(a => {
@@ -199,11 +199,11 @@ function renderResultadoComum(r, jaEraDeHoje) {
           else if (a.letra === r.alternativaMarcada) cls += " is-wrong";
           return `<button class="${cls}" disabled>
             <span class="alt__letra">${a.letra}</span>
-            <span>${escapeHtml(a.texto)}</span>
+            <span>${formatarTexto(a.texto)}</span>
           </button>`;
         }).join("")}
       </div>
-      ${r.explicacao ? `<div class="explicacao"><strong>Explicação:</strong> ${escapeHtml(r.explicacao)}</div>` : ""}
+      ${r.explicacao ? `<div class="explicacao"><strong>Explicação:</strong> ${formatarTexto(r.explicacao)}</div>` : ""}
     </div>
     <p style="text-align:center; color:var(--ink-soft); font-size:14px;">Volte amanhã para a próxima questão. 👋</p>
   `;
@@ -217,6 +217,16 @@ function escapeHtml(str) {
   return String(str ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   }[c]));
+}
+
+/**
+ * As questões da API vêm com formatação estilo Markdown (ex: **negrito**).
+ * Primeiro escapamos o HTML (segurança), depois convertemos **texto** em
+ * <strong>texto</strong>. A ordem importa: escapar antes de converter evita
+ * que um enunciado malicioso injete HTML de verdade.
+ */
+function formatarTexto(str) {
+  return escapeHtml(str).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
 }
 </script>
 </body>
