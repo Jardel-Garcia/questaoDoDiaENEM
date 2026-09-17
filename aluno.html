@@ -51,7 +51,7 @@ async function iniciar() {
       renderQuestao(data);
     }
   } catch (e) {
-    renderErro("Não foi possível carregar a questão de hoje. Puxe a tela para atualizar, ou tente novamente em alguns minutos.");
+    renderErro("Não foi possível carregar a questão de hoje. Detalhe técnico: " + e.message);
   }
 }
 
