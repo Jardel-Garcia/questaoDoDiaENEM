@@ -7,7 +7,16 @@
 // Exemplo:
 // const API_URL = "https://script.google.com/macros/s/AKfycb.../exec";
 
-const API_URL = "COLE_AQUI_A_URL_DO_APPS_SCRIPT";
+const API_URL = "https://script.google.com/macros/s/AKfycbxA_9pwsxnYpYOfepJUWF6MNB5AWlJKMAXoWYkLy-xCeOIGUWMUNKIeTvu-h6mW29IX/exec"; // <-- troque pela sua URL real, terminando em /exec
+
+function verificarUrlConfigurada_() {
+  if (!API_URL || API_URL === "COLE_AQUI_A_URL_DO_APPS_SCRIPT") {
+    throw new Error(
+      "A URL do backend ainda não foi configurada. Abra frontend/js/config.js e troque " +
+      "API_URL pela URL do seu Apps Script publicado (terminando em /exec)."
+    );
+  }
+}
 
 /**
  * Wrapper para chamadas GET ao backend (Apps Script).
@@ -15,6 +24,7 @@ const API_URL = "COLE_AQUI_A_URL_DO_APPS_SCRIPT";
  * params: objeto com parâmetros extras da query string
  */
 async function apiGet(action, params = {}) {
+  verificarUrlConfigurada_();
   const url = new URL(API_URL);
   url.searchParams.set("action", action);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
@@ -31,6 +41,7 @@ async function apiGet(action, params = {}) {
  * JSON.parse(e.postData.contents) manualmente.
  */
 async function apiPost(action, payload = {}) {
+  verificarUrlConfigurada_();
   const resp = await fetch(API_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
