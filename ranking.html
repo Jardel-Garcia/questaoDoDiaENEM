@@ -15,12 +15,19 @@
     </div>
     <p class="board__eyebrow">RANKING GERAL</p>
     <h1 class="board__title">Quem mais acerta a Questão do Dia</h1>
-    <p class="board__meta">Todas as turmas · acumulado desde o início</p>
+    <p class="board__meta">Todas as turmas do 3º ano · acumulado desde o início</p>
   </header>
 
   <main class="page">
-    <div class="wrap" id="app">
-      <div class="loading">Carregando ranking…</div>
+    <div class="wrap">
+      <div id="appRanking">
+        <div class="loading">Carregando ranking…</div>
+      </div>
+
+      <h2 class="section-title">Questões anteriores</h2>
+      <div id="appHistorico">
+        <div class="loading">Carregando histórico…</div>
+      </div>
     </div>
   </main>
 
@@ -31,32 +38,34 @@
 
 <script src="js/config.js"></script>
 <script>
-const app = document.getElementById("app");
+const appRanking = document.getElementById("appRanking");
+const appHistorico = document.getElementById("appHistorico");
 const INTERVALO_ATUALIZACAO = 45000; // 45s — bom para telão/mural
 
-carregar();
-setInterval(carregar, INTERVALO_ATUALIZACAO);
+carregarRanking();
+carregarHistorico(); // não entra no setInterval: histórico muda no máx. 1x/dia
+setInterval(carregarRanking, INTERVALO_ATUALIZACAO);
 
-async function carregar() {
+async function carregarRanking() {
   try {
     const ranking = await apiGet("ranking");
-    render(ranking);
+    renderRanking(ranking);
   } catch (e) {
     // Em modo telão, evitamos substituir a tela por um erro feio a cada 45s.
     // Só mostramos erro se ainda não há nada na tela.
-    if (!app.querySelector(".ranking-list")) {
-      app.innerHTML = `<div class="center-note">Não foi possível carregar o ranking agora. Atualizando automaticamente…</div>`;
+    if (!appRanking.querySelector(".ranking-list")) {
+      appRanking.innerHTML = `<div class="center-note">Não foi possível carregar o ranking agora. Atualizando automaticamente…</div>`;
     }
   }
 }
 
-function render(lista) {
+function renderRanking(lista) {
   if (!lista.length) {
-    app.innerHTML = `<div class="center-note">Ainda não há acertos registrados hoje. Seja o primeiro! 🚀</div>`;
+    appRanking.innerHTML = `<div class="center-note">Ainda não há acertos registrados hoje. Seja o primeiro! 🚀</div>`;
     return;
   }
 
-  app.innerHTML = `
+  appRanking.innerHTML = `
     <div class="ranking-list">
       ${lista.map(item => `
         <div class="ranking-row ${item.posicao <= 3 ? `ranking-row--top${item.posicao}` : ""}">
@@ -70,10 +79,65 @@ function render(lista) {
   `;
 }
 
+async function carregarHistorico() {
+  try {
+    const historico = await apiGet("historicoQuestoes");
+    renderHistorico(historico);
+  } catch (e) {
+    appHistorico.innerHTML = `<div class="center-note">Não foi possível carregar as questões anteriores agora.</div>`;
+  }
+}
+
+function renderHistorico(lista) {
+  if (!lista.length) {
+    appHistorico.innerHTML = `<div class="center-note" style="padding:20px 0;">Ainda não há questões de dias anteriores.</div>`;
+    return;
+  }
+
+  appHistorico.innerHTML = `
+    <div class="historico-list">
+      ${lista.map(q => `
+        <details class="historico-item">
+          <summary class="historico-item__resumo">
+            <span class="historico-item__data">${formatarDataBR(q.data)}</span>
+            <span class="question__disciplina">${escapeHtml(q.disciplina || "ENEM")} · ${escapeHtml(String(q.ano || ""))}</span>
+          </summary>
+          <div class="historico-item__corpo">
+            <div class="question__enunciado">${formatarTexto(q.enunciado)}</div>
+            ${q.imagemUrl ? `<img class="question__imagem" src="${q.imagemUrl}" alt="Imagem da questão">` : ""}
+            <div class="alternativas">
+              ${q.alternativas.map(a => `
+                <div class="alt ${a.letra === q.correta ? "is-correct" : ""}">
+                  <span class="alt__letra">${a.letra}</span>
+                  <span>${formatarTexto(a.texto)}</span>
+                </div>
+              `).join("")}
+            </div>
+            ${q.explicacao ? `<div class="explicacao"><strong>Explicação:</strong> ${formatarTexto(q.explicacao)}</div>` : ""}
+          </div>
+        </details>
+      `).join("")}
+    </div>
+  `;
+}
+
+function formatarDataBR(dataIso) {
+  const [ano, mes, dia] = String(dataIso).split("-").map(Number);
+  if (!ano || !mes || !dia) return dataIso;
+  const data = new Date(ano, mes - 1, dia);
+  return data.toLocaleDateString("pt-BR", { day: "2-digit", month: "long" });
+}
+
 function escapeHtml(str) {
   return String(str ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   }[c]));
+}
+
+// As questões vêm com **negrito** estilo Markdown; converte para <strong>
+// depois de escapar o HTML (segurança primeiro, formatação depois).
+function formatarTexto(str) {
+  return escapeHtml(str).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
 }
 </script>
 </body>
