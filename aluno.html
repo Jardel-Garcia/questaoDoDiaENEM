@@ -167,12 +167,39 @@ async function enviarResposta() {
     renderResultado(resultado);
   } catch (e) {
     if (String(e.message).includes("JA_RESPONDEU")) {
-      iniciar(); // recarrega e mostra a tela de "já respondeu hoje"
+      renderJaRespondeuAntes();
     } else {
       app.innerHTML = `<div class="card"><p class="msg msg--erro">Não foi possível enviar sua resposta (${escapeHtml(e.message)}). Tente novamente.</p>
       <button class="btn btn-primary" onclick="location.reload()">Tentar de novo</button></div>`;
     }
   }
+}
+
+/**
+ * Mostrado quando o backend recusa a resposta por já existir uma resposta
+ * desse aluno hoje. De propósito NÃO buscamos o gabarito aqui: o aparelho
+ * costuma ser compartilhado entre alunos, e mostrar a resposta certa nessa
+ * tela poderia entregar a resposta para o próximo colega que ainda vai
+ * responder. Depois, volta para a questão em branco, pronta para a
+ * próxima pessoa.
+ */
+function renderJaRespondeuAntes() {
+  app.innerHTML = `
+    <div class="card resultado">
+      <div class="resultado__icone">🙌</div>
+      <p class="resultado__titulo">Você já respondeu hoje!</p>
+      <p style="color:var(--ink-soft); font-size:14px;">
+        Cada pessoa só pode responder a Questão do Dia uma vez. Volte amanhã para a próxima.
+      </p>
+      <button class="btn btn-primary" id="btnVoltarQuestao">Entendi, voltar</button>
+    </div>
+  `;
+  document.getElementById("btnVoltarQuestao").addEventListener("click", () => {
+    estado.alunoId = null;
+    estado.alunoNome = null;
+    estado.alternativaEscolhida = null;
+    renderQuestao(estado.questao);
+  });
 }
 
 function renderResultado(r) {
