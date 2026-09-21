@@ -84,7 +84,7 @@ async function carregarHistorico() {
     const historico = await apiGet("historicoQuestoes");
     renderHistorico(historico);
   } catch (e) {
-    appHistorico.innerHTML = `<div class="center-note">Não foi possível carregar as questões anteriores agora.</div>`;
+    appHistorico.innerHTML = `<div class="center-note">Não foi possível carregar as questões anteriores agora. Detalhe técnico: ${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -99,10 +99,13 @@ function renderHistorico(lista) {
       ${lista.map(q => `
         <details class="historico-item">
           <summary class="historico-item__resumo">
-            <span class="historico-item__data">${formatarDataBR(q.data)}</span>
-            <span class="question__disciplina">${escapeHtml(q.disciplina || "ENEM")} · ${escapeHtml(String(q.ano || ""))}</span>
+            <span class="historico-item__texto">
+              <span class="historico-item__data">${formatarDataBR(q.data)}</span>
+              <span class="historico-item__sub">Questão ${q.numero ? escapeHtml(String(q.numero)) : "s/nº"} · ENEM ${escapeHtml(String(q.ano || ""))} · Gabarito <strong>${escapeHtml(q.correta || "")}</strong></span>
+            </span>
           </summary>
           <div class="historico-item__corpo">
+            <span class="question__disciplina">${escapeHtml(q.disciplina || "ENEM")}</span>
             <div class="question__enunciado">${formatarTexto(q.enunciado)}</div>
             ${q.imagemUrl ? `<img class="question__imagem" src="${q.imagemUrl}" alt="Imagem da questão">` : ""}
             <div class="alternativas">
@@ -122,10 +125,9 @@ function renderHistorico(lista) {
 }
 
 function formatarDataBR(dataIso) {
-  const [ano, mes, dia] = String(dataIso).split("-").map(Number);
+  const [ano, mes, dia] = String(dataIso).split("-");
   if (!ano || !mes || !dia) return dataIso;
-  const data = new Date(ano, mes - 1, dia);
-  return data.toLocaleDateString("pt-BR", { day: "2-digit", month: "long" });
+  return `${dia}/${mes}/${ano}`;
 }
 
 function escapeHtml(str) {
